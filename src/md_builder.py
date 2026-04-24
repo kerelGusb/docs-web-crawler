@@ -70,14 +70,18 @@ class MarkdownBuilder:
 
     def _extract_content(self, soup):
         selectors = [
+            "div#documentation-content"
             "td.content",
             "main#bodyColumn",
             "main",
             "article",
+            "page-content"
             "div#contentBox",
             "div#bodyColumn",
             "div#content",
-            "main-body"
+            "main-body",
+            '[class*="docItemContainer"]',
+            '[class*="content"]'
         ]
 
         for sel in selectors:

@@ -62,6 +62,9 @@ class LinkTree:
                 if link in self.visited:
                     continue
 
+                if len(self.visited) > self.max_pages:
+                    break
+
                 self.visited.add(link)
 
                 child = Node(link)
@@ -102,7 +105,7 @@ class LinkTree:
             links = set()
 
             for a in soup.find_all("a", href=True):
-                full_url = urljoin(url, a["href"])
+                full_url = urljoin(response.url, a["href"])
                 clean_url = self._normalize_url(full_url)
 
                 if not self._in_scope(clean_url):

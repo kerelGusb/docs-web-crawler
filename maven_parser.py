@@ -5,7 +5,7 @@ from markdownify import markdownify as md
 from doc_tree_crawler import build_tree
 from urllib.parse import urljoin, urlparse
 
-BASE_URL = "https://commons.apache.org/proper/commons-codec/project-info.html"
+BASE_URL = "https://commons.apache.org/proper/commons-vfs/project-info.html"
 OUTPUT_MD = "docs.md"
 IMAGES_DIR = "images"
 os.makedirs(IMAGES_DIR, exist_ok=True)
@@ -16,27 +16,37 @@ def download_html(url):
     r.raise_for_status()
     return r.text
 
+
 def download_image(src, base_url):
-    if src.startswith("data:image"):
-        header, encoded = src.split(",", 1)
-        ext = header.split("/")[1].split(";")[0]
-        filename = f"img_{hash(src)}.{ext}"
-        path = os.path.join(IMAGES_DIR, filename)
-        if not os.path.exists(path):
-            with open(path, "wb") as f:
-                f.write(base64.b64decode(encoded))
-        return path
-    else:
+    try:
+        if src.startswith("data:image"):
+            header, encoded = src.split(",", 1)
+            ext = header.split("/")[1].split(";")[0]
+            filename = f"img_{hash(src)}.{ext}"
+            path = os.path.join(IMAGES_DIR, filename)
+
+            if not os.path.exists(path):
+                with open(path, "wb") as f:
+                    f.write(base64.b64decode(encoded))
+            return path
+
         img_url = urljoin(base_url, src)
         filename = os.path.basename(img_url.split("?")[0])
         path = os.path.join(IMAGES_DIR, filename)
+
         if not os.path.exists(path):
-            r = requests.get(img_url)
-            r.raise_for_status()
+            r = requests.get(img_url, timeout=5)
+
+            if r.status_code != 200:
+                return None
+
             with open(path, "wb") as f:
                 f.write(r.content)
+
         return path
 
+    except Exception:
+        return None
 
 def extract_content(soup):
     selectors = [
@@ -51,16 +61,23 @@ def extract_content(soup):
 
     for sel in selectors:
         el = soup.select_one(sel)
-        if el and len(el.get_text(strip=True)) > 200:
-            return el
 
-    return soup.body or soup
+        if el:
+            if el.name == "td":
+                return BeautifulSoup(el.decode_contents(), "lxml")
+
+            return el
++
+    if soup.body:
+        return soup.body
+
+    return soup
 
 
 def preprocess_html(html, base_url):
     html = html.replace("\u00A0", " ")
 
-    soup = BeautifulSoup(html, "xml")
+    soup = BeautifulSoup(html, "lxml")
 
     for tag in soup(["script", "style", "noscript"]):
         tag.decompose()
@@ -78,17 +95,11 @@ def preprocess_html(html, base_url):
         if src:
             img["src"] = download_image(src, base_url)
     
-    for table in content.find_all("table"):
-        table.unwrap()
-
-    for tag in content.find_all(["tr", "li", "p", "h1", "h2", "h3"]):
-        tag.insert_after("\n")
-
     return str(content)
 
 
 def html_to_markdown(html):
-    return md(html, heading_style="ATX", bullets="*")
+    return md(html, heading_style="ATX", bullets="*", tables=True)
 
 
 def collect_bfs_nodes(root):
@@ -106,7 +117,7 @@ def collect_bfs_nodes(root):
 
 
 def main():
-    tree = build_tree(BASE_URL, max_pages=5)
+    tree = build_tree(BASE_URL)
 
     urls = collect_bfs_nodes(tree)
 
@@ -126,6 +137,7 @@ def main():
                 html = preprocess_html(html, url)
                 page_md = html_to_markdown(html)
 
+                f.write(f"\nSOURCE: {url}\n\n---\n")
                 f.write(page_md)
                 f.write("\n\n---\n")
 
